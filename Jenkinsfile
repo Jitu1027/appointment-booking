@@ -1,67 +1,44 @@
- pipeline {
-    agent any;
-    stages{
-        stage("clone code from github"){
-            steps{
-                git branch: 'main', url: 'https://github.com/debabrata013/appinment-booking.git'
-            }
-        }
-        stage("build an image"){
-            steps{
-                sh "docker build -t appointment-image ."
-            }
-        }
-        stage("push image on dockerhub"){
-            steps{
-                withCredentials([usernamePassword(
-                    credentialsId: "dockerhubcreds",
-                    usernameVariable: "dockerHubUser",
-                    passwordVariable: "dockerHubPass"
-                )]){
-                    sh "docker login -u ${env.dockerHubUser} -p ${env.dockerHubPass}"
-                    sh "docker tag appointment-image ${env.dockerHubUser}/appointment-image:latest"
-                    sh "docker push ${env.dockerHubUser}/appointment-image:latest"
-                }
-            }
-       }
-       stage("deploy code"){
-           steps{
-               sh "docker compose up -d"
-           }
-       }
+pipeline {
+  agent any
+
+  environment {
+    DOCKER_IMAGE = 'medibook-app'
+    CONTAINER_NAME = 'medibook-container'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git url: 'https://github.com/Jitu1027/appointment-booking.git', branch: 'main'
+      }
     }
-    post{
-        success{
-            script{
-                withCredentials([usernamePassword(
-                    credentialsId: "emailcreds",
-                    usernameVariable: "EMAIL_USER",
-                    passwordVariable: "EMAIL_PASS"
-                 )]){
-                     emailext(
-                         from: "${EMAIL_USER}",
-                         to: "${EMAIL_USER}",
-                         subject: 'Build Successful',
-                         body: 'The build completed successfully.'
-                      )
-                 }
-             }
-        }
-        failure{
-            script{
-                withCredentials([usernamePassword(
-                    credentialsId: "emailcreds",
-                    usernameVariable: "EMAIL_USER",
-                    passwordVariable: "EMAIL_PASS"
-                 )]){
-                     emailext(
-                         from: "${EMAIL_USER}",
-                         to: "${EMAIL_USER}",
-                         subject: 'Build failed',
-                         body: 'The build failed.'
-                      )
-                 }
-             }
-        }
+
+    stage('Install Dependencies') {
+      steps {
+        bat 'npm install'
+      }
     }
+
+    stage('Build App') {
+      steps {
+        bat 'npm run build'
+      }
+    }
+
+    stage('Docker Build') {
+      steps {
+        bat 'docker build -t %DOCKER_IMAGE% .'
+      }
+    }
+
+    stage('Docker Run') {
+      steps {
+        bat '''
+          docker stop %CONTAINER_NAME% || exit 0
+          docker rm %CONTAINER_NAME% || exit 0
+          docker run -d -p 3000:3000 --name %CONTAINER_NAME% %DOCKER_IMAGE%
+        '''
+      }
+    }
+  }
 }
